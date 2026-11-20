@@ -19,7 +19,8 @@
       "同一历史读版本完成分组和数值计算",
       "读后修改受版本前置条件保护",
       "物理完整性与逻辑引用一致性可观察",
-      "外部文档流验证后整批导入"
+      "外部文档流验证后整批导入",
+      "关联读取在固定读版本展开引用键并保留未匹配左侧"
     ]
   },
   "project_shape": "backend",
@@ -75,7 +76,8 @@
         "aggregate",
         "patch",
         "inspect",
-        "transfer"
+        "transfer",
+        "join"
       ]
     },
     {
@@ -98,7 +100,8 @@
         "index",
         "replica",
         "expire",
-        "inspect"
+        "inspect",
+        "join"
       ]
     },
     {
@@ -193,7 +196,8 @@
         "compact",
         "expire",
         "aggregate",
-        "inspect"
+        "inspect",
+        "join"
       ]
     },
     {
@@ -205,7 +209,8 @@
         "snapshot",
         "index",
         "aggregate",
-        "inspect"
+        "inspect",
+        "join"
       ]
     },
     {
@@ -215,7 +220,8 @@
       "owned_facts": "查询表达式与类型比较",
       "consumers": [
         "query",
-        "aggregate"
+        "aggregate",
+        "join"
       ]
     },
     {
@@ -224,7 +230,17 @@
       "responsibility": "游标签名与数据库绑定",
       "owned_facts": "游标签名与数据库绑定",
       "consumers": [
-        "query"
+        "query",
+        "join"
+      ]
+    },
+    {
+      "id": "join",
+      "path": "strataleaf/join.py",
+      "responsibility": "固定读版本的引用键关联与分组分页",
+      "owned_facts": "固定读版本的引用键关联与分组分页",
+      "consumers": [
+        "join"
       ]
     }
   ],
@@ -513,6 +529,28 @@
       "success": "外部文档流验证后整批导入",
       "failure": "重复键整体拒绝",
       "verification": "python3 -m examples.workflows transfer"
+    },
+    {
+      "id": "join",
+      "name": "关联读取",
+      "entry": "Database.joins.lookup",
+      "module_ids": [
+        "join",
+        "cursor",
+        "predicate",
+        "index",
+        "snapshot",
+        "codec",
+        "storage"
+      ],
+      "steps": [
+        "输入校验与读取已有事实",
+        "固定读版本的引用键关联与分组分页",
+        "形成可观察结果"
+      ],
+      "success": "关联读取在固定读版本展开引用键并保留未匹配左侧",
+      "failure": "外来或换条件游标拒绝",
+      "verification": "python3 -m examples.workflows join"
     }
   ],
   "complexity": {

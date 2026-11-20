@@ -4,6 +4,7 @@ from .catalog import Catalog
 from .diagnostics import Diagnostics
 from .feeds import ChangeFeed
 from .indexes import Indexes
+from .join import Joins
 from .mvcc import read_record
 from .patch import patch_document
 from .query import QueryEngine
@@ -27,6 +28,7 @@ class Database:
         self.aggregates = Aggregates(self._store)
         self.transfer = Transfer(self._store)
         self.diagnostics = Diagnostics(self._store)
+        self.joins = Joins(self._store)
         self._queries = QueryEngine(self._store)
 
     @property

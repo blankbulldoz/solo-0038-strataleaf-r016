@@ -23,6 +23,12 @@ def rejected(call, error):
     raise RuntimeError("operation unexpectedly succeeded")
 
 
+def join_view(page):
+    return {"revision": page.revision, "plan": page.plan, "groups": [
+        {"key": group.record.key, "matches": [row.key for row in group.matches],
+         "missing": list(group.missing), "deleted": list(group.deleted)} for group in page.groups]}
+
+
 def run(flow):
     with tempfile.TemporaryDirectory(prefix="strataleaf-example-") as directory:
         folder = Path(directory)
@@ -145,6 +151,39 @@ def run(flow):
                           "duplicate": rejected(lambda: db.transfer.import_lines("copy_segments", exported["lines"]), Conflict)}
                 if len(db.query("copy_segments").records) != 6:
                     raise RuntimeError("logical import differs")
+            elif flow == "join":
+                db.catalog.create("marks")
+                marks_revision = db.batch("seed_marks").put("marks", "m1", {"segment": "seg_00"}).put(
+                    "marks", "m2", {"segment": ["seg_01", "seg_02"]}).put(
+                    "marks", "m3", {"segment": "seg_09"}).put("marks", "m4", {"segment": "seg_05"}).commit().revision
+                db.batch().delete("segments", "seg_05").commit()
+                first_page = db.joins.lookup("marks", on="segment", target="segments", limit=2)
+                db.batch().put("marks", "m5", {"segment": "seg_00"}).delete("segments", "seg_00").put(
+                    "segments", "seg_01", {"region": "north", "sequence": 11}).commit()
+                second_page = db.joins.lookup("marks", on="segment", target="segments", limit=2, cursor=first_page.cursor)
+                pages = [first_page, second_page]
+                paged = {group.record.key: group for page in pages for group in page.groups}
+                if list(paged) != ["m1", "m2", "m3", "m4"] or len({page.revision for page in pages}) != 1:
+                    raise RuntimeError("join pagination did not hold one read view")
+                if [row.key for row in paged["m2"].matches] != ["seg_01", "seg_02"]:
+                    raise RuntimeError("one-to-many join expansion lost matches")
+                if paged["m3"].missing != ("seg_09",) or paged["m4"].deleted != ("seg_05",):
+                    raise RuntimeError("join did not distinguish missing from deleted targets")
+                past = db.joins.lookup("marks", on="segment", target="segments", revision=marks_revision)
+                past_groups = {group.record.key: group for group in past.groups}
+                if [row.key for row in past_groups["m4"].matches] != ["seg_05"]:
+                    raise RuntimeError("historical join did not see the pre-delete target")
+                current = db.joins.lookup("marks", on="segment", target="segments")
+                current_groups = {group.record.key: group for group in current.groups}
+                if current_groups["m1"].deleted != ("seg_00",) or "m5" not in current_groups:
+                    raise RuntimeError("current join did not reflect interleaved writes")
+                foreign = rejected(lambda: db.joins.lookup("marks", on="segment", target="segments",
+                                                           cursor=db.query("marks", limit=1).cursor), InvalidCursor)
+                changed = rejected(lambda: db.joins.lookup("marks", on="other", target="segments",
+                                                           cursor=first_page.cursor), InvalidCursor)
+                output = {"paged": [join_view(page) for page in pages], "head_after_writes": db.revision,
+                          "historical": join_view(past), "current": join_view(current),
+                          "foreign_cursor": foreign, "changed_condition": changed}
             else:
                 raise ValueError("unknown example workflow: " + flow)
             print(json.dumps({"workflow": flow, "result": output}, ensure_ascii=False, sort_keys=True, default=str))
